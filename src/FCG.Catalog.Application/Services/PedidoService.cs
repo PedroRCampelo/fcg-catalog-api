@@ -93,16 +93,16 @@ public class PedidoService
             return;
         }
 
+        var gerouItemNaBiblioteca = false;
+
         switch (evento.Status)
         {
             case PaymentStatus.Approved:
-                await ConcluirPedidoAsync(pedido, cancellationToken);
+                gerouItemNaBiblioteca = await ConcluirPedidoAsync(pedido, cancellationToken);
                 break;
 
             case PaymentStatus.Rejected:
                 pedido.Recusar();
-                _logger.LogInformation("Pedido {OrderId} recusado: pagamento rejeitado, o jogo {GameId} não entra na biblioteca de {UserId}",
-                    pedido.Id, pedido.JogoId, pedido.UsuarioId);
                 break;
 
             default:
@@ -111,24 +111,30 @@ public class PedidoService
         }
 
         await _unitOfWork.SalvarAsync(cancellationToken);
+
+        // O resultado só é logado depois de confirmado no banco. Se duas entregas do mesmo evento correm
+        // juntas, a que perde a corrida falha no SalvarAsync e não pode ter registrado um sucesso.
+        if (evento.Status == PaymentStatus.Rejected)
+            _logger.LogInformation("Pedido {OrderId} recusado: pagamento rejeitado, o jogo {GameId} não entra na biblioteca de {UserId}",
+                pedido.Id, pedido.JogoId, pedido.UsuarioId);
+        else if (gerouItemNaBiblioteca)
+            _logger.LogInformation("Pedido {OrderId} concluído: o jogo {GameId} entrou na biblioteca de {UserId}",
+                pedido.Id, pedido.JogoId, pedido.UsuarioId);
+        else
+            _logger.LogWarning("O usuário {UserId} já tinha o jogo {GameId} na biblioteca: pedido {OrderId} concluído sem duplicar o item",
+                pedido.UsuarioId, pedido.JogoId, pedido.Id);
     }
 
-    private async Task ConcluirPedidoAsync(Pedido pedido, CancellationToken cancellationToken)
+    // Retorna se um item novo foi adicionado à biblioteca. Segunda barreira, além do índice único do
+    // banco: se o jogo já estiver na biblioteca, o pedido fecha sem criar um item repetido.
+    private async Task<bool> ConcluirPedidoAsync(Pedido pedido, CancellationToken cancellationToken)
     {
         pedido.Concluir();
 
-        // Segunda barreira, além do índice único do banco: se o jogo já estiver na biblioteca, o pedido
-        // fecha sem criar um item repetido.
         if (await _biblioteca.ExisteAsync(pedido.UsuarioId, pedido.JogoId, cancellationToken))
-        {
-            _logger.LogWarning("O usuário {UserId} já tinha o jogo {GameId} na biblioteca: pedido {OrderId} concluído sem duplicar o item",
-                pedido.UsuarioId, pedido.JogoId, pedido.Id);
-            return;
-        }
+            return false;
 
         await _biblioteca.AdicionarAsync(new JogoAdquirido(pedido.UsuarioId, pedido.JogoId, pedido.Id), cancellationToken);
-
-        _logger.LogInformation("Pedido {OrderId} concluído: o jogo {GameId} entrou na biblioteca de {UserId}",
-            pedido.Id, pedido.JogoId, pedido.UsuarioId);
+        return true;
     }
 }

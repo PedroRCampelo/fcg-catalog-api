@@ -186,4 +186,33 @@ public class PedidoServiceProcessarPagamentoTests
         Assert.Equal(StatusPedido.Pendente, outroPedido.Status);
         Assert.Single(_biblioteca.Itens);
     }
+
+    [Fact]
+    public async Task Resultado_Nao_Deve_Ser_Logado_Quando_O_Salvamento_Falha()
+    {
+        _unitOfWork.FalharAoSalvarCom = new ConflitoException("Você já possui este jogo.");
+
+        await Assert.ThrowsAsync<ConflitoException>(() => _servico.ProcessarPagamentoAsync(Evento(PaymentStatus.Approved)));
+
+        Assert.DoesNotContain(_logger.Registros, r => r.Mensagem.Contains("concluído"));
+        Assert.DoesNotContain(_logger.Registros, r => r.Mensagem.Contains("recusado"));
+    }
+
+    [Fact]
+    public async Task Resultado_Da_Recusa_Tambem_So_Deve_Ser_Logado_Depois_De_Salvar()
+    {
+        _unitOfWork.FalharAoSalvarCom = new InvalidOperationException("falha ao gravar");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _servico.ProcessarPagamentoAsync(Evento(PaymentStatus.Rejected)));
+
+        Assert.Empty(_logger.Registros);
+    }
+
+    [Fact]
+    public async Task Aprovacao_Salva_Deve_Logar_Conclusao_Uma_Unica_Vez()
+    {
+        await _servico.ProcessarPagamentoAsync(Evento(PaymentStatus.Approved));
+
+        Assert.Single(_logger.Registros, r => r.Mensagem.Contains("concluído") && r.Nivel == LogLevel.Information);
+    }
 }
