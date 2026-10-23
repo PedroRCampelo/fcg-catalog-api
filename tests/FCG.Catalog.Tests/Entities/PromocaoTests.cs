@@ -7,8 +7,8 @@ namespace FCG.Catalog.Tests.Entities;
 public class PromocaoTests
 {
     private static readonly Guid JogoId = Guid.NewGuid();
-    private static readonly DateTimeOffset Inicio = new(2026, 9, 1, 0, 0, 0, TimeSpan.Zero);
-    private static readonly DateTimeOffset Fim = new(2026, 9, 10, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTime Inicio = new(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime Fim = new(2026, 9, 10, 0, 0, 0, DateTimeKind.Utc);
 
     [Fact]
     public void Deve_Criar_Promocao_Quando_Os_Dados_Forem_Validos()
@@ -43,15 +43,46 @@ public class PromocaoTests
     }
 
     [Fact]
-    public void Deve_Guardar_As_Datas_Em_Utc_Mesmo_Quando_Recebidas_Com_Fuso()
+    public void Data_Sem_Fuso_Deve_Ser_Tratada_Como_Utc_Independente_Da_Maquina()
     {
-        var inicioComFuso = new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.FromHours(-3));
-        var fimComFuso = new DateTimeOffset(2026, 9, 10, 0, 0, 0, TimeSpan.FromHours(-3));
+        var inicioSemFuso = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Unspecified);
+        var fimSemFuso = new DateTime(2026, 9, 10, 0, 0, 0, DateTimeKind.Unspecified);
 
-        var promocao = new Promocao(JogoId, 10m, inicioComFuso, fimComFuso);
+        var promocao = new Promocao(JogoId, 10m, inicioSemFuso, fimSemFuso);
 
         Assert.Equal(DateTimeKind.Utc, promocao.DataInicio.Kind);
-        Assert.Equal(DateTimeKind.Utc, promocao.DataFim.Kind);
-        Assert.Equal(new DateTime(2026, 9, 1, 3, 0, 0, DateTimeKind.Utc), promocao.DataInicio);
+        Assert.Equal(new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc), promocao.DataInicio);
+        Assert.Equal(new DateTime(2026, 9, 10, 0, 0, 0, DateTimeKind.Utc), promocao.DataFim);
+    }
+
+    [Fact]
+    public void Data_Em_Horario_Local_Deve_Ser_Convertida_Para_Utc()
+    {
+        var inicioLocal = new DateTime(2026, 9, 1, 12, 0, 0, DateTimeKind.Local);
+        var fimLocal = new DateTime(2026, 9, 10, 12, 0, 0, DateTimeKind.Local);
+
+        var promocao = new Promocao(JogoId, 10m, inicioLocal, fimLocal);
+
+        Assert.Equal(DateTimeKind.Utc, promocao.DataInicio.Kind);
+        Assert.Equal(inicioLocal.ToUniversalTime(), promocao.DataInicio);
+    }
+
+    [Fact]
+    public void Data_Utc_Deve_Ser_Mantida_Sem_Alteracao()
+    {
+        var promocao = new Promocao(JogoId, 10m, Inicio, Fim);
+
+        Assert.Equal(Inicio, promocao.DataInicio);
+        Assert.Equal(Fim, promocao.DataFim);
+    }
+
+    [Fact]
+    public void Comparacao_Do_Periodo_Deve_Ser_Feita_Em_Utc_E_Nao_Pelo_Relogio_Local()
+    {
+        // 2026-09-01 02:00 UTC vem ANTES de 2026-09-01 01:00 em UTC-3 (= 04:00 UTC), mesmo com hora local maior.
+        var inicio = new DateTime(2026, 9, 1, 4, 0, 0, DateTimeKind.Utc);
+        var fim = new DateTime(2026, 9, 1, 2, 0, 0, DateTimeKind.Utc);
+
+        Assert.Throws<PromocaoInvalidaException>(() => new Promocao(JogoId, 10m, inicio, fim));
     }
 }

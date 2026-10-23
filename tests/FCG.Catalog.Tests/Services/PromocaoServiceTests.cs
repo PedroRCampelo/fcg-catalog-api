@@ -10,8 +10,8 @@ namespace FCG.Catalog.Tests.Services;
 
 public class PromocaoServiceTests
 {
-    private static readonly DateTimeOffset Inicio = new(2026, 9, 1, 0, 0, 0, TimeSpan.Zero);
-    private static readonly DateTimeOffset Fim = new(2026, 9, 10, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTime Inicio = new(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime Fim = new(2026, 9, 10, 0, 0, 0, DateTimeKind.Utc);
 
     private readonly FakeJogoRepository _jogos = new();
     private readonly FakePromocaoRepository _promocoes = new();
