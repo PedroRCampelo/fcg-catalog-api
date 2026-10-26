@@ -58,6 +58,19 @@ public class PaymentProcessedConsumerTests
         return new Cenario { Provider = provider, Harness = harness, Pedidos = pedidos, Biblioteca = biblioteca, Logger = logger, Pedido = pedido };
     }
 
+    private static async Task<bool> EsperarAsync(Func<bool> condicao, int limiteEmMilissegundos = 5000)
+    {
+        var espera = System.Diagnostics.Stopwatch.StartNew();
+
+        while (espera.ElapsedMilliseconds < limiteEmMilissegundos)
+        {
+            if (condicao()) return true;
+            await Task.Delay(10);
+        }
+
+        return condicao();
+    }
+
     private static PaymentProcessedEvent Evento(Pedido pedido, PaymentStatus status) =>
         new(pedido.Id, pedido.UsuarioId, pedido.JogoId, pedido.TituloJogo, status);
 
@@ -91,11 +104,16 @@ public class PaymentProcessedConsumerTests
         await using var c = await IniciarAsync();
         var evento = Evento(c.Pedido, PaymentStatus.Approved);
 
-        await c.Harness.Bus.Publish(evento);
-        await c.Harness.Bus.Publish(evento);
+        // Uma entrega por vez, esperando o consumo terminar: este teste prova o DESCARTE da reentrega.
+        // A disputa de entregas simultâneas é decidida pelos índices do banco, que um fake em memória
+        // não tem, e é verificada contra o PostgreSQL de verdade.
+        for (var i = 1; i <= 2; i++)
+        {
+            await c.Harness.Bus.Publish(evento);
+            Assert.True(await EsperarAsync(() => c.Harness.Consumed.Select<PaymentProcessedEvent>().Count() >= i));
+        }
 
-        // Só encerra quando as DUAS mensagens foram consumidas (e a segunda descartada pela regra de negócio).
-        Assert.True(await c.Harness.Consumed.Any<PaymentProcessedEvent>(x => c.Logger.Registros.Any(r => r.Mensagem.Contains("descartado sem efeito"))));
+        Assert.Contains(c.Logger.Registros, r => r.Mensagem.Contains("descartado sem efeito"));
         Assert.Single(c.Biblioteca.Itens);
         Assert.Equal(StatusPedido.Concluido, c.Pedido.Status);
     }

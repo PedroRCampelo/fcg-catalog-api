@@ -73,7 +73,7 @@ public class PedidoServiceProcessarPagamentoTests
     {
         var evento = Evento(PaymentStatus.Approved);
         await _servico.ProcessarPagamentoAsync(evento);
-        _logger.Registros.Clear();
+        _logger.Limpar();
 
         await _servico.ProcessarPagamentoAsync(evento);
 
