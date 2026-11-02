@@ -1,0 +1,15 @@
+# Configuracao NAO sensivel de catalog-api: host do RabbitMQ, nomes das filas e, quando houver, parametros de negocio.
+# Os nomes das filas precisam ser iguais nos servicos que declaram e nos que consomem cada fila
+# (users, catalog, payments e notifications). Se mudar um aqui, mude nos demais.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: catalog-api-config
+  namespace: fcg
+  labels:
+    app.kubernetes.io/name: catalog-api
+    app.kubernetes.io/part-of: fcg
+data:
+  RabbitMq__Host: rabbitmq
+  RabbitMq__Queues__PaymentsOrderPlaced: payments.order-placed
+  RabbitMq__Queues__CatalogPaymentProcessed: catalog.payment-processed
